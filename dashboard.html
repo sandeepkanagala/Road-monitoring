@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Road Monitoring Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🚗 Road Monitoring Dashboard</h1>
+            <p class="subtitle">Live data acquisition, media reporting, and smart road evaluation</p>
+            <div class="status-badge">
+                Status: <span id="status" class="offline">Offline</span>
+                <div class="device-selector">
+                    <select id="deviceSelect" onchange="changeDevice()">
+                        <option value="">All Devices</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <div class="metrics">
+            <div class="card">
+                <h3>Total Readings</h3>
+                <div class="value" id="totalReadings">0</div>
+            </div>
+            <div class="card">
+                <h3>Average Vibration</h3>
+                <div class="value" id="avgVibration">0.00</div>
+                <small>m/s²</small>
+            </div>
+            <div class="card">
+                <h3>Road Quality</h3>
+                <div class="value" id="roadQuality">--</div>
+            </div>
+            <div class="card">
+                <h3>Last Update</h3>
+                <div class="value" id="lastUpdate">--</div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-container">
+                <canvas id="vibrationChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="qualityChart"></canvas>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="toggleAutoRefresh(this)">▶ Auto Refresh</button>
+            <button onclick="refreshData()">🔄 Refresh</button>
+            <button onclick="clearData()">🗑️ Clear Data</button>
+            <button onclick="downloadExcel()" class="download-btn">⬇ Download Excel</button>
+        </div>
+
+        <div class="log">
+            <h3>📊 Live Data Log</h3>
+            <div id="dataLog"></div>
+        </div>
+
+        <div class="media-section">
+            <div class="media-gallery">
+                <h3>📸 Uploaded Images</h3>
+                <div id="imagesGallery" class="gallery-container">
+                    <p class="loading">Loading images...</p>
+                </div>
+            </div>
+
+            <div class="media-gallery">
+                <h3>🎥 Uploaded Videos</h3>
+                <div id="videosGallery" class="gallery-container">
+                    <p class="loading">Loading videos...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <script>
+        let vibrationChart, qualityChart;
+        let autoRefresh = true, timer = null;
+        let lastVibrationData = null;
+        let lastQualityData = null;
+        let currentDeviceId = '';
+
+        /* ---------------- FETCH DEVICES ---------------- */
+        async function loadDevices() {
+            try {
+                const res = await fetch('/api/devices');
+                const data = await res.json();
+                const select = document.getElementById('deviceSelect');
+                const current = select.value;
+
+                // Keep "All Devices" option
+                select.innerHTML = '<option value="">All Devices</option>';
+
+                data.devices.forEach(dev => {
+                    const opt = document.createElement('option');
+                    opt.value = dev;
+                    opt.textContent = dev;
+                    if (dev === current) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Error loading devices:', err);
+            }
+        }
+
+        function changeDevice() {
+            currentDeviceId = document.getElementById('deviceSelect').value;
+            // Reset data tracking to force chart updates
+            lastVibrationData = null;
+            lastQualityData = null;
+            resetDashboard();
+            refreshData();
+            refreshMedia();
+        }
+
+        /* ---------------- FETCH DATA ---------------- */
+        async function fetchData() {
+            try {
+                let url = '/api/get-latest';
+                if (currentDeviceId) url += `?device_id=${currentDeviceId}`;
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) throw new Error('Failed to fetch data');
+                const data = await res.json();
+                updateDashboard(data);
+                updateStatus(true);
+            } catch (err) {
+                console.error('fetchData error:', err);
+                updateStatus(false);
+            }
+        }
+
+        async function fetchQuality() {
+            try {
+                let url = '/api/road-quality';
+                if (currentDeviceId) url += `?device_id=${currentDeviceId}`;
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) throw new Error('Failed to fetch quality');
+                const data = await res.json();
+                document.getElementById('roadQuality').textContent = data.quality || '--';
+            } catch (err) {
+                console.error('fetchQuality error:', err);
+                document.getElementById('roadQuality').textContent = '--';
+            }
+        }
+
+        /* ---------------- UPDATE UI ---------------- */
+        function resetDashboard() {
+            document.getElementById('totalReadings').textContent = 0;
+            document.getElementById('avgVibration').textContent = '0.00';
+            document.getElementById('roadQuality').textContent = '--';
+            document.getElementById('lastUpdate').textContent = '--';
+            document.getElementById('dataLog').innerHTML = '';
+
+            lastVibrationData = null;
+            lastQualityData = null;
+
+            // Clear charts if they exist
+            if (vibrationChart) {
+                vibrationChart.data.labels = [];
+                vibrationChart.data.datasets[0].data = [];
+                vibrationChart.update('none', false);
+            }
+            if (qualityChart) {
+                qualityChart.data.datasets[0].data = [0, 0, 0, 0];
+                qualityChart.update('none', false);
+            }
+        }
+
+        function updateDashboard(data) {
+            if (!data || data.length === 0) {
+                resetDashboard();
+                return;
+            }
+
+            document.getElementById('totalReadings').textContent = data.length;
+
+            const vib = data.map(d => Math.abs(d.accelerometer || 0));
+            const avg = (vib.reduce((a, b) => a + b, 0) / vib.length).toFixed(2);
+            document.getElementById('avgVibration').textContent = avg;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+            updateVibrationChart(data);
+            updateQualityChart(data);
+            updateLog(data);
+        }
+
+        /* ---------------- CHARTS ---------------- */
+        function updateVibrationChart(data) {
+            const y = data.map(d => Math.abs(d.accelerometer || 0));
+            const x = y.map((_, i) => i + 1);
+
+            // Check if data actually changed
+            const dataStr = JSON.stringify(y);
+            if (lastVibrationData === dataStr && vibrationChart) {
+                return; // Skip update if data hasn't changed
+            }
+            lastVibrationData = dataStr;
+
+            if (!vibrationChart) {
+                vibrationChart = new Chart(document.getElementById('vibrationChart'), {
+                    type: 'line',
+                    data: {
+                        labels: x,
+                        datasets: [{ label: 'Vibration (m/s²)', data: y, borderColor: '#2a5298', borderWidth: 2 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        transitions: {
+                            active: {
+                                animation: {
+                                    duration: 0
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            } else {
+                vibrationChart.data.labels = x;
+                vibrationChart.data.datasets[0].data = y;
+                vibrationChart.update('none', false);
+            }
+        }
+
+        function updateQualityChart(data) {
+            const q = { Excellent: 0, Good: 0, Fair: 0, Poor: 0 };
+            data.forEach(d => {
+                const a = Math.abs(d.accelerometer || 0);
+                if (a < 2) q.Excellent++;
+                else if (a < 5) q.Good++;
+                else if (a < 10) q.Fair++;
+                else q.Poor++;
+            });
+
+            // Check if data actually changed
+            const dataStr = JSON.stringify(Object.values(q));
+            if (lastQualityData === dataStr && qualityChart) {
+                return; // Skip update if data hasn't changed
+            }
+            lastQualityData = dataStr;
+
+            if (!qualityChart) {
+                qualityChart = new Chart(document.getElementById('qualityChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(q),
+                        datasets: [{ data: Object.values(q) }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        transitions: {
+                            active: {
+                                animation: {
+                                    duration: 0
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                qualityChart.data.datasets[0].data = Object.values(q);
+                qualityChart.update('none', false);
+            }
+        }
+
+        /* ---------------- LOG ---------------- */
+        function updateLog(data) {
+            const log = document.getElementById('dataLog');
+            log.innerHTML = '';
+
+            // Show last 20 readings with acceleration and GPS
+            data.slice(-20).reverse().forEach(d => {
+                const accel = Number(d.accelerometer || 0).toFixed(2);
+                const lat = d.latitude !== undefined ? d.latitude : 'N/A';
+                const lon = d.longitude !== undefined ? d.longitude : 'N/A';
+                const time = d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : '--';
+
+                const div = document.createElement('div');
+                div.textContent = `Time: ${time} | Accel: ${accel} m/s² | Lat: ${lat} | Lon: ${lon}`;
+                log.appendChild(div);
+            });
+        }
+
+        /* ---------------- CONTROLS ---------------- */
+        function updateStatus(ok) {
+            const s = document.getElementById('status');
+            s.textContent = ok ? 'Online' : 'Offline';
+            s.className = ok ? 'online' : 'offline';
+        }
+
+        function refreshData() {
+            fetchData();
+            fetchQuality();
+        }
+
+        function toggleAutoRefresh(btn) {
+            autoRefresh = !autoRefresh;
+            if (autoRefresh) {
+                refreshData();
+                if (timer) clearInterval(timer);
+                timer = setInterval(refreshData, 2000);
+                btn.textContent = '⏸ Stop Auto Refresh';
+            } else {
+                if (timer) clearInterval(timer);
+                timer = null;
+                btn.textContent = '▶ Auto Refresh';
+            }
+        }
+
+        async function clearData() {
+            // If filtering by device, maybe we only rename clear that device's data?
+            // For now, the backend clears ALL data.
+            if (!confirm('Are you sure you want to clear ALL data?')) return;
+            await fetch('/api/clear-data', { method: 'POST' });
+            resetDashboard();
+            refreshData();
+        }
+
+        function downloadExcel() {
+            let url = "/api/export-excel";
+            if (currentDeviceId) url += `?device_id=${currentDeviceId}`;
+            window.location.href = url;
+        }
+
+
+
+
+        /* ---------------- MEDIA GALLERY ---------------- */
+        async function loadImages() {
+            try {
+                let url = '/api/get-images';
+                if (currentDeviceId) url += `?device_id=${currentDeviceId}`;
+                const res = await fetch(url, { cache: 'no-store' });
+                const data = await res.json();
+                const gallery = document.getElementById('imagesGallery');
+
+                if (!data.images || data.images.length === 0) {
+                    gallery.innerHTML = '<p class="empty">No images uploaded yet.</p>';
+                    return;
+                }
+
+                gallery.innerHTML = '';
+                data.images.forEach(img => {
+                    const div = document.createElement('div');
+                    div.className = 'media-item';
+                    div.innerHTML = `
+                <img src="${img.url}" alt="${img.filename}" loading="lazy" onclick="openModal('${img.url}', 'image')">
+                <div class="media-info">
+                    <p class="media-filename">${img.filename}</p>
+                    <p class="media-date">${new Date(img.modified).toLocaleString()}</p>
+                </div>
+            `;
+                    gallery.appendChild(div);
+                });
+            } catch (err) {
+                console.error('loadImages error:', err);
+                document.getElementById('imagesGallery').innerHTML = '<p class="error">Error loading images.</p>';
+            }
+        }
+
+        async function loadVideos() {
+            try {
+                let url = '/api/get-videos';
+                if (currentDeviceId) url += `?device_id=${currentDeviceId}`;
+                const res = await fetch(url, { cache: 'no-store' });
+                const data = await res.json();
+                const gallery = document.getElementById('videosGallery');
+
+                if (!data.videos || data.videos.length === 0) {
+                    gallery.innerHTML = '<p class="empty">No videos uploaded yet.</p>';
+                    return;
+                }
+
+                gallery.innerHTML = '';
+                data.videos.forEach(vid => {
+                    const ext = vid.filename.split('.').pop().toLowerCase();
+                    let mime = 'video/mp4';
+                    if (ext === 'webm') mime = 'video/webm';
+                    if (ext === 'ogg' || ext === 'ogv') mime = 'video/ogg';
+                    if (ext === 'mov') mime = 'video/quicktime';
+                    if (ext === 'mkv') mime = 'video/x-matroska';
+
+                    const div = document.createElement('div');
+                    div.className = 'media-item';
+                    div.innerHTML = `
+                <video controls preload="metadata" onclick="event.stopPropagation()">
+                    <source src="${vid.url}" type="${mime}">
+                    Your browser does not support the video tag.
+                </video>
+                <div class="media-info">
+                    <p class="media-filename">${vid.filename}</p>
+                    <p class="media-date">${new Date(vid.modified).toLocaleString()}</p>
+                </div>
+            `;
+                    gallery.appendChild(div);
+                });
+            } catch (err) {
+                console.error('loadVideos error:', err);
+                document.getElementById('videosGallery').innerHTML = '<p class="error">Error loading videos.</p>';
+            }
+        }
+
+        function openModal(url, type) {
+            if (type === 'image') {
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="this.parentElement.parentElement.remove()">&times;</span>
+                <img src="${url}" alt="Full size image">
+            </div>
+        `;
+                document.body.appendChild(modal);
+                modal.onclick = function (e) {
+                    if (e.target === modal) modal.remove();
+                };
+            }
+        }
+
+        function refreshMedia() {
+            loadImages();
+            loadVideos();
+        }
+
+        /* Initial load */
+        loadDevices();
+        refreshData();
+        refreshMedia();
+        if (autoRefresh) {
+            timer = setInterval(() => {
+                loadDevices(); // Check for new devices periodically
+                refreshData();
+                refreshMedia();
+            }, 2000);
+            // Set button text to reflect initial state
+            const autoRefreshBtn = document.querySelector('button[onclick="toggleAutoRefresh(this)"]');
+            if (autoRefreshBtn) {
+                autoRefreshBtn.textContent = '⏸ Stop Auto Refresh';
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -14,7 +14,7 @@ body {
 }
 
 .container {
-    max-width: 1100px;
+    max-width: 1600px;
     margin: auto;
 }
 
@@ -115,12 +115,12 @@ header h1 {
     border-radius: 12px;
     padding: 22px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    min-height: 400px;
+    min-height: 550px;
 }
 
 .chart-container canvas {
-    max-height: 425px;
-    height: 350px !important;
+    max-height: 550px;
+    height: 500px !important;
     width: 100% !important;
 }
 

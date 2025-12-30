@@ -185,7 +185,7 @@
 
             document.getElementById('totalReadings').textContent = data.length;
 
-            const vib = data.map(d => Math.abs(d.accelerometer || 0));
+            const vib = data.map(d => Math.abs(d.accel_magnitude || d.accelerometer || 0));
             const avg = (vib.reduce((a, b) => a + b, 0) / vib.length).toFixed(2);
             document.getElementById('avgVibration').textContent = avg;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
@@ -197,7 +197,7 @@
 
         /* ---------------- CHARTS ---------------- */
         function updateVibrationChart(data) {
-            const y = data.map(d => Math.abs(d.accelerometer || 0));
+            const y = data.map(d => Math.abs(d.accel_magnitude || d.accelerometer || 0));
             const x = y.map((_, i) => i + 1);
 
             // Check if data actually changed
@@ -242,7 +242,7 @@
         function updateQualityChart(data) {
             const q = { Excellent: 0, Good: 0, Fair: 0, Poor: 0 };
             data.forEach(d => {
-                const a = Math.abs(d.accelerometer || 0);
+                const a = Math.abs(d.accel_magnitude || d.accelerometer || 0);
                 if (a < 2) q.Excellent++;
                 else if (a < 5) q.Good++;
                 else if (a < 10) q.Fair++;
@@ -289,7 +289,7 @@
 
             // Show last 20 readings with acceleration and GPS
             data.slice(-20).reverse().forEach(d => {
-                const accel = Number(d.accelerometer || 0).toFixed(2);
+                const accel = Number(d.accel_magnitude || d.accelerometer || 0).toFixed(2);
                 const lat = d.latitude !== undefined ? d.latitude : 'N/A';
                 const lon = d.longitude !== undefined ? d.longitude : 'N/A';
                 const time = d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : '--';

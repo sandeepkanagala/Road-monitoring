@@ -11,7 +11,7 @@ body {
     padding: 20px;
     color: #333;
     font-size: 13px;
-    zoom: 75%;
+    zoom: 75%
 }
 
 .container {
@@ -462,4 +462,81 @@ button:active {
     transform: translateY(-2px);
     box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
     background: white;
+}
+
+/* ---------------- RECENT REPORTS ---------------- */
+.reports-container {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.reports-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.reports-table th,
+.reports-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.reports-table th {
+    background-color: #f8f9fa;
+    color: #555;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+.report-thumb {
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.report-thumb:hover {
+    transform: scale(1.05);
+}
+
+.dt-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.dt-info .date {
+    font-weight: 600;
+    color: #333;
+}
+
+.dt-info .time {
+    color: #777;
+    font-size: 0.9em;
+}
+
+.location-link {
+    display: inline-block;
+    padding: 6px 12px;
+    background: #e0e7ff;
+    color: #2a5298;
+    border-radius: 20px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9em;
+    transition: all 0.2s;
+}
+
+.location-link:hover {
+    background: #2a5298;
+    color: white;
+}
+
+.no-loc {
+    color: #aaa;
+    font-style: italic;
 }

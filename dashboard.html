@@ -66,10 +66,10 @@
         </div>
 
         <div class="media-section">
-            <div class="media-gallery">
-                <h3>📸 Uploaded Images</h3>
-                <div id="imagesGallery" class="gallery-container">
-                    <p class="loading">Loading images...</p>
+            <div class="media-gallery recent-reports">
+                <h3>� Recent Reports</h3>
+                <div id="reportsContainer" class="reports-container">
+                    <p class="loading">Loading reports...</p>
                 </div>
             </div>
 
@@ -185,7 +185,7 @@
 
             document.getElementById('totalReadings').textContent = data.length;
 
-            const vib = data.map(d => Math.abs(d.accel_magnitude || d.accelerometer || 0));
+            const vib = data.map(d => Math.abs(d.accelerometer || 0));
             const avg = (vib.reduce((a, b) => a + b, 0) / vib.length).toFixed(2);
             document.getElementById('avgVibration').textContent = avg;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
@@ -197,7 +197,7 @@
 
         /* ---------------- CHARTS ---------------- */
         function updateVibrationChart(data) {
-            const y = data.map(d => Math.abs(d.accel_magnitude || d.accelerometer || 0));
+            const y = data.map(d => Math.abs(d.accelerometer || 0));
             const x = y.map((_, i) => i + 1);
 
             // Check if data actually changed
@@ -242,7 +242,7 @@
         function updateQualityChart(data) {
             const q = { Excellent: 0, Good: 0, Fair: 0, Poor: 0 };
             data.forEach(d => {
-                const a = Math.abs(d.accel_magnitude || d.accelerometer || 0);
+                const a = Math.abs(d.accelerometer || 0);
                 if (a < 2) q.Excellent++;
                 else if (a < 5) q.Good++;
                 else if (a < 10) q.Fair++;
@@ -289,7 +289,7 @@
 
             // Show last 20 readings with acceleration and GPS
             data.slice(-20).reverse().forEach(d => {
-                const accel = Number(d.accel_magnitude || d.accelerometer || 0).toFixed(2);
+                const accel = Number(d.accelerometer || 0).toFixed(2);
                 const lat = d.latitude !== undefined ? d.latitude : 'N/A';
                 const lon = d.longitude !== undefined ? d.longitude : 'N/A';
                 const time = d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : '--';
@@ -345,35 +345,64 @@
 
 
         /* ---------------- MEDIA GALLERY ---------------- */
-        async function loadImages() {
+        async function loadReports() {
             try {
                 let url = '/api/get-images';
                 if (currentDeviceId) url += `?device_id=${currentDeviceId}`;
                 const res = await fetch(url, { cache: 'no-store' });
                 const data = await res.json();
-                const gallery = document.getElementById('imagesGallery');
+                const container = document.getElementById('reportsContainer');
 
                 if (!data.images || data.images.length === 0) {
-                    gallery.innerHTML = '<p class="empty">No images uploaded yet.</p>';
+                    container.innerHTML = '<p class="empty">No reports found.</p>';
                     return;
                 }
 
-                gallery.innerHTML = '';
+                container.innerHTML = '';
+                const table = document.createElement('table');
+                table.className = 'reports-table';
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Image</th>
+                            <th>Date & Time</th>
+                            <th>Location</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                `;
+                const tbody = table.querySelector('tbody');
+
                 data.images.forEach(img => {
-                    const div = document.createElement('div');
-                    div.className = 'media-item';
-                    div.innerHTML = `
-                <img src="${img.url}" alt="${img.filename}" loading="lazy" onclick="openModal('${img.url}', 'image')">
-                <div class="media-info">
-                    <p class="media-filename">${img.filename}</p>
-                    <p class="media-date">${new Date(img.modified).toLocaleString()}</p>
-                </div>
-            `;
-                    gallery.appendChild(div);
+                    const tr = document.createElement('tr');
+
+                    // Location Link
+                    let locHtml = '<span class="no-loc">N/A</span>';
+                    if (img.latitude && img.longitude) {
+                        locHtml = `<a href="https://www.google.com/maps?q=${img.latitude},${img.longitude}" target="_blank" class="location-link">📍 View on Map</a>`;
+                    }
+
+                    tr.innerHTML = `
+                        <td>
+                            <img src="${img.url}" alt="${img.filename}" class="report-thumb" loading="lazy" onclick="openModal('${img.url}', 'image')">
+                        </td>
+                        <td>
+                            <div class="dt-info">
+                                <span class="date">${img.date_str}</span>
+                                <span class="time">${img.time_str}</span>
+                            </div>
+                        </td>
+                        <td>
+                            ${locHtml}
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
                 });
+                container.appendChild(table);
+
             } catch (err) {
-                console.error('loadImages error:', err);
-                document.getElementById('imagesGallery').innerHTML = '<p class="error">Error loading images.</p>';
+                console.error('loadReports error:', err);
+                document.getElementById('reportsContainer').innerHTML = '<p class="error">Error loading reports.</p>';
             }
         }
 
@@ -437,7 +466,7 @@
         }
 
         function refreshMedia() {
-            loadImages();
+            loadReports();
             loadVideos();
         }
 

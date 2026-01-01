@@ -385,8 +385,80 @@ def get_images():
 
         # Sort by modified time, newest first
         images.sort(key=lambda x: x['modified'], reverse=True)
+
+        # ---------------- ADD GPS & DATE/TIME INFO ---------------- #
+        all_sensor_data = load_data()
+        
+        # Helper to parse timestamp from filename: image_20251227_194049.jpg
+        def get_timestamp_from_filename(fname):
+            try:
+                # expecting format: image_YYYYMMDD_HHMMSS...
+                parts = fname.split('_')
+                if len(parts) >= 3:
+                    date_part = parts[1]
+                    time_part = parts[2].split('.')[0] # remove extension
+                    dt_str = f"{date_part}{time_part}"
+                    return datetime.strptime(dt_str, "%Y%m%d%H%M%S")
+            except:
+                return None
+            return None
+
+        for img in images:
+            # Default values
+            img['latitude'] = None
+            img['longitude'] = None
+            img['date_str'] = '--'
+            img['time_str'] = '--'
+
+            # Try to get datetime from filename
+            dt = get_timestamp_from_filename(img['filename'])
+            
+            # If filename parsing failed, use modified time
+            if not dt:
+                 try:
+                     dt = datetime.fromisoformat(img['modified'])
+                 except:
+                     pass
+
+            if dt:
+                img['date_str'] = dt.strftime("%Y-%m-%d")
+                img['time_str'] = dt.strftime("%H:%M:%S")
+
+                # Find closest sensor data record
+                # We look for data with same device_id (if exists) and closest time
+                candidates = all_sensor_data
+                if img['device_id']:
+                    candidates = [d for d in candidates if str(d.get('device_id')) == str(img['device_id'])]
+                
+                best_match = None
+                min_diff = float('inf')
+
+                for record in candidates:
+                    ts = record.get('timestamp')
+                    if ts:
+                        try:
+                            # Handle different timestamp formats if needed, assuming ISO for now
+                            # 2025-12-27T19:40:49.727896
+                            # We might need to handle Z or +00:00 if present
+                            record_dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                            # naive vs aware check might be needed, assume naive for simplicity or both same
+                            diff = abs((record_dt - dt).total_seconds())
+                            
+                            # arbitrary threshold: match within 60 seconds?
+                            if diff < 10 and diff < min_diff:
+                                min_diff = diff
+                                best_match = record
+                        except:
+                            pass
+                
+                if best_match:
+                    img['latitude'] = best_match.get('latitude')
+                    img['longitude'] = best_match.get('longitude')
+
+
         return jsonify({'images': images}), 200
     except Exception as e:
+        print(f"Error in get_images: {e}")
         return jsonify({'error': str(e)}), 500
 
 
